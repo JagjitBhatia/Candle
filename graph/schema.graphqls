@@ -1,0 +1,41 @@
+# GraphQL schema example
+#
+# https://gqlgen.com/getting-started/
+
+type User {
+  id: ID!
+  username: String!
+  firstName: String!
+  lastName: String!
+  institution: String!
+  pfp_url: String
+}
+
+type Member {
+  user: User!
+  role: String!
+  title: String!
+}
+
+type Org {
+  id: ID!
+  name: String!
+  institution: String!
+  org_pic_url: String
+  members: [Member!]!
+}
+
+type Query {
+  users: [User]
+  orgs: [Org]
+  userById(id: ID!): User
+  userByName(name: String!): [User]
+  orgById(id: ID!): Org
+  orgByName(name: String!): [Org]
+}
+
+type Mutation {
+  createUser(username: String!, firstName: String!, lastName: String!, institution: String!, pfp_url: String): User
+  createOrg(name: String!, institution: String!, org_pic_url: String, userId: ID!, title: String!): Org
+  addOrgMember(newMemberId: ID!, orgId: ID!, role: String!, title: String!): Org
+}
