@@ -1,4 +1,5 @@
 package graph
+
 //go:generate go run github.com/99designs/gqlgen
 import (
 	"database/sql"
@@ -8,6 +9,6 @@ import (
 //
 // It serves as dependency injection for your app, add any dependencies you require here.
 
-type Resolver struct{
-	Db	*sql.DB
+type Resolver struct {
+	Db *sql.DB
 }

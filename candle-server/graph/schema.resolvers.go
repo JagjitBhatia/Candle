@@ -11,9 +11,14 @@ import (
 
 	"github.com/JagjitBhatia/Candle/graph/generated"
 	"github.com/JagjitBhatia/Candle/graph/model"
+
+	"github.com/sirupsen/logrus"
 )
 
+var log = logrus.New()
+
 func (r *mutationResolver) CreateUser(ctx context.Context, username string, firstName string, lastName string, institution string, pfpURL *string) (*model.User, error) {
+
 	var newUser model.User
 
 	newUser.Username = username
@@ -32,19 +37,21 @@ func (r *mutationResolver) CreateUser(ctx context.Context, username string, firs
 		newUser.FirstName,
 		newUser.LastName,
 		newUser.Institution,
-		newUser.PfpURL,
+		*newUser.PfpURL,
 	)
 
 	result, err := r.Db.Exec(createUserQuery)
 
 	if err != nil {
-		panic(err.Error())
+		log.Errorf("failed to create user with error %v", err)
+		return nil, err
 	}
 
 	newUserID, err := result.LastInsertId()
 
 	if err != nil {
-		panic(err.Error())
+		log.Error(err.Error())
+		return nil, err
 	}
 
 	newUser.ID = strconv.FormatInt(newUserID, 10)
@@ -64,7 +71,8 @@ func (r *mutationResolver) CreateOrg(ctx context.Context, name string, instituti
 	results, err := r.Db.Query(findUserQuery)
 
 	if err != nil {
-		panic(err.Error())
+		log.Errorf("failed to create org with error: %v", err)
+		return nil, err
 	}
 
 	userExists := false
@@ -72,14 +80,17 @@ func (r *mutationResolver) CreateOrg(ctx context.Context, name string, instituti
 	for results.Next() {
 		err = results.Scan(&user.Username, &user.FirstName, &user.LastName, &user.Institution, &user.PfpURL)
 		if err != nil {
-			panic(err.Error())
+			log.Error(err)
+			continue
 		}
 
 		userExists = true
 	}
 
 	if !userExists {
-		panic(fmt.Errorf("User not found!"))
+		err = fmt.Errorf("failed to create org with error: user not found")
+		log.Error(err)
+		return nil, err
 	}
 
 	newOrg.Name = name
@@ -91,15 +102,20 @@ func (r *mutationResolver) CreateOrg(ctx context.Context, name string, instituti
 		*(newOrg.OrgPicURL) = "<default_profile_pic_url>" // TODO: Replace with actual default pic url
 	}
 
-	createOrgQuery := fmt.Sprintf("INSERT INTO Orgs VALUES(NULL, '%s', '%s', '%s')", newOrg.Name, newOrg.Institution, *(&newOrg.OrgPicURL))
+	createOrgQuery := fmt.Sprintf("INSERT INTO Orgs VALUES(NULL, '%s', '%s', '%s')", newOrg.Name, newOrg.Institution, *newOrg.OrgPicURL)
 
 	result, err := r.Db.Exec(createOrgQuery)
 
 	if err != nil {
-		panic(err.Error())
+		log.Errorf("failed to create org with error: %v", err)
+		return nil, err
 	}
 
 	newOrgId, err := result.LastInsertId()
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
 
 	newOrg.ID = strconv.FormatInt(newOrgId, 10)
 
@@ -109,10 +125,11 @@ func (r *mutationResolver) CreateOrg(ctx context.Context, name string, instituti
 
 	addOrgMemberQuery := fmt.Sprintf("INSERT INTO Members VALUES (%s, %s, '%s', '%s')", user.ID, newOrg.ID, newMember.Role, newMember.Title)
 
-	result, err = r.Db.Exec(addOrgMemberQuery)
+	_, err = r.Db.Exec(addOrgMemberQuery)
 
 	if err != nil {
-		panic(err.Error())
+		log.Error(err.Error())
+		return nil, err
 	}
 
 	newOrg.Members = append(newOrg.Members, &newMember)
@@ -140,7 +157,8 @@ func (r *mutationResolver) AddOrgMember(ctx context.Context, newMemberID string,
 	results, err := r.Db.Query(findOrgQuery)
 
 	if err != nil {
-		panic(err.Error())
+		log.Error(err)
+		return nil, err
 	}
 
 	orgExists := false
@@ -148,20 +166,23 @@ func (r *mutationResolver) AddOrgMember(ctx context.Context, newMemberID string,
 	for results.Next() {
 		err = results.Scan(&org.Name, &org.Institution, &org.OrgPicURL)
 		if err != nil {
-			panic(err.Error())
+			log.Error(err.Error())
+			continue
 		}
 
 		orgExists = true
 	}
 
 	if !orgExists {
-		panic(fmt.Errorf("Org not found!"))
+		err = fmt.Errorf("error: org not found")
+		log.Error(err)
+		return nil, err
 	}
 
 	results, err = r.Db.Query(findOrgMembers)
 
 	if err != nil {
-		panic(err.Error())
+		log.Error(err.Error())
 	}
 
 	for results.Next() {
@@ -171,7 +192,8 @@ func (r *mutationResolver) AddOrgMember(ctx context.Context, newMemberID string,
 		err = results.Scan(&memberUser.ID, &memberUser.Username, &memberUser.FirstName, &memberUser.LastName, &memberUser.Institution, &memberUser.PfpURL,
 			&currentMember.Role, &currentMember.Title)
 		if err != nil {
-			panic(err.Error())
+			log.Error(err.Error())
+			return nil, err
 		}
 
 		currentMember.User = &memberUser
@@ -181,7 +203,8 @@ func (r *mutationResolver) AddOrgMember(ctx context.Context, newMemberID string,
 	results, err = r.Db.Query(findUserQuery)
 
 	if err != nil {
-		panic(err.Error())
+		log.Error(err.Error())
+		return nil, err
 	}
 
 	userExists := false
@@ -190,14 +213,16 @@ func (r *mutationResolver) AddOrgMember(ctx context.Context, newMemberID string,
 		err = results.Scan(&user.Username, &user.FirstName, &user.LastName, &user.Institution, &user.PfpURL)
 
 		if err != nil {
-			panic(err.Error())
+			log.Error(err.Error())
+			return nil, err
 		}
 
 		userExists = true
 	}
 
 	if !userExists {
-		panic(fmt.Errorf("User not found!"))
+		err = fmt.Errorf("error: user not found")
+		return nil, err
 	}
 
 	newMember.User = &user
@@ -205,7 +230,8 @@ func (r *mutationResolver) AddOrgMember(ctx context.Context, newMemberID string,
 	_, err = r.Db.Exec(addOrgMemberQuery)
 
 	if err != nil {
-		panic(err.Error())
+		log.Error(err.Error())
+		return nil, err
 	}
 
 	org.Members = append(org.Members, &newMember)
@@ -217,6 +243,10 @@ func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
 	var users []*model.User
 
 	results, err := r.Db.Query("SELECT id, username, first_name, last_name, institution, pfp_url FROM Users")
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
 
 	for results.Next() {
 		var user model.User
@@ -224,7 +254,8 @@ func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
 		err = results.Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.Institution, &user.PfpURL)
 
 		if err != nil {
-			panic(err.Error())
+			log.Error(err.Error())
+			return nil, err
 		}
 
 		users = append(users, &user)
@@ -237,6 +268,10 @@ func (r *queryResolver) Orgs(ctx context.Context) ([]*model.Org, error) {
 	var orgs []*model.Org
 
 	results, err := r.Db.Query("SELECT id, org_name, institution, org_pic_url FROM Orgs")
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
 
 	for results.Next() {
 		var org model.Org
@@ -244,25 +279,30 @@ func (r *queryResolver) Orgs(ctx context.Context) ([]*model.Org, error) {
 		err = results.Scan(&org.ID, &org.Name, &org.Institution, &org.OrgPicURL)
 
 		if err != nil {
-			panic(err.Error())
+			log.Error(err.Error())
+			continue
 		}
-		
+
 		results, err := r.Db.Query(fmt.Sprintf(`SELECT Users.id, Users.username, Users.first_name, Users.last_name, Users.institution, Users.pfp_url,
 												Members.member_role, Members.title FROM Users JOIN Members ON Users.id = Members.user_id
 												WHERE Members.org_id = %s`, org.ID))
-
+		if err != nil {
+			log.Error(err.Error())
+			return nil, err
+		}
 
 		for results.Next() {
 			var member model.Member
 			var user model.User
 
 			err = results.Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.Institution, &user.PfpURL,
-								&member.Role, &member.Title)
+				&member.Role, &member.Title)
 
 			if err != nil {
-				panic(err.Error())
+				log.Error(err.Error())
+				continue
 			}
-			
+
 			member.User = &user
 			org.Members = append(org.Members, &member)
 		}
@@ -279,6 +319,10 @@ func (r *queryResolver) UserByID(ctx context.Context, id string) (*model.User, e
 
 	findUserQuery := fmt.Sprintf("SELECT username, first_name, last_name, institution, pfp_url FROM Users WHERE id = %s", user.ID)
 	results, err := r.Db.Query(findUserQuery)
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
 
 	for results.Next() {
 		err = results.Scan(&user.Username, &user.FirstName, &user.LastName, &user.Institution, &user.PfpURL)
@@ -295,6 +339,10 @@ func (r *queryResolver) UserByName(ctx context.Context, name string) ([]*model.U
 	var users []*model.User
 
 	results, err := r.Db.Query("SELECT id, username, first_name, last_name, institution, pfp_url FROM Users WHERE username = '%s'", name)
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
 
 	for results.Next() {
 		var user model.User
@@ -302,7 +350,8 @@ func (r *queryResolver) UserByName(ctx context.Context, name string) ([]*model.U
 		err = results.Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.Institution, &user.PfpURL)
 
 		if err != nil {
-			panic(err.Error())
+			log.Error(err.Error())
+			return nil, err
 		}
 
 		users = append(users, &user)
@@ -318,29 +367,43 @@ func (r *queryResolver) OrgByID(ctx context.Context, id string) (*model.Org, err
 	findOrgQuery := fmt.Sprintf("SELECT org_name, institution, org_pic_url FROM Orgs WHERE id = %s", org.ID)
 	results, err := r.Db.Query(findOrgQuery)
 
+	if err != nil {
+		err = fmt.Errorf("error running orgById query. Error: %v", err)
+		log.Error(err)
+		return nil, err
+
+	}
+
 	for results.Next() {
 		err = results.Scan(&org.Name, &org.Institution, &org.OrgPicURL)
 
 		if err != nil {
-			panic(err.Error())
+			log.Error(err.Error())
+			continue
 		}
+
 	}
 
 	results, err = r.Db.Query(fmt.Sprintf(`SELECT Users.id, Users.username, Users.first_name, Users.last_name, Users.institution, Users.pfp_url,
 												Members.member_role, Members.title FROM Users JOIN Members ON Users.id = Members.user_id
 												WHERE Members.org_id = %s`, org.ID))
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
 
 	for results.Next() {
 		var member model.Member
 		var user model.User
 
 		err = results.Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.Institution, &user.PfpURL,
-							&member.Role, &member.Title)
+			&member.Role, &member.Title)
 
 		if err != nil {
-			panic(err.Error())
+			log.Error(err.Error())
+			return nil, err
 		}
-		
+
 		member.User = &user
 		org.Members = append(org.Members, &member)
 	}
@@ -352,6 +415,11 @@ func (r *queryResolver) OrgByName(ctx context.Context, name string) ([]*model.Or
 	var orgs []*model.Org
 
 	results, err := r.Db.Query(fmt.Sprintf("SELECT id, org_name, institution, org_pic_url FROM Orgs WHERE org_name = '%s'", name))
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
+
 	for results.Next() {
 		var org model.Org
 
@@ -360,23 +428,27 @@ func (r *queryResolver) OrgByName(ctx context.Context, name string) ([]*model.Or
 		if err != nil {
 			panic(err.Error())
 		}
-		
+
 		results, err := r.Db.Query(fmt.Sprintf(`SELECT Users.id, Users.username, Users.first_name, Users.last_name, Users.institution, Users.pfp_url,
 												Members.member_role, Members.title FROM Users JOIN Members ON Users.id = Members.user_id
 												WHERE Members.org_id = %s`, org.ID))
-
+		if err != nil {
+			log.Error(err.Error())
+			return nil, err
+		}
 
 		for results.Next() {
 			var member model.Member
 			var user model.User
 
 			err = results.Scan(&user.ID, &user.Username, &user.FirstName, &user.LastName, &user.Institution, &user.PfpURL,
-								&member.Role, &member.Title)
+				&member.Role, &member.Title)
 
 			if err != nil {
-				panic(err.Error())
+				log.Error(err.Error())
+				return nil, err
 			}
-			
+
 			member.User = &user
 			org.Members = append(org.Members, &member)
 		}
